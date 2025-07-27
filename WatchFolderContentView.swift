@@ -44,13 +44,22 @@ class FolderWatcher: ObservableObject {
     func startWatching(folder: String) {
         stopWatching()
         
-        guard fileManager.fileExists(atPath: folder) else { return }
+        guard fileManager.fileExists(atPath: folder) else { 
+            print("Folder does not exist: \(folder)")
+            return 
+        }
         
         watchedFolder = folder
         isWatching = true
         
         let folderURL = URL(fileURLWithPath: folder)
         let descriptor = open(folderURL.path, O_EVTONLY)
+        
+        guard descriptor >= 0 else {
+            print("Failed to open folder for monitoring")
+            isWatching = false
+            return
+        }
         
         monitor = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
@@ -538,7 +547,7 @@ struct ContentView: View {
     }
     
     private func processJob(_ job: FolderWatcher.PendingJob) {
-        guard !imageFolderPath.isEmpty else {
+        if imageFolderPath.isEmpty {
             // If no image folder is set, ask user to select one
             selectImageFolder()
             guard !imageFolderPath.isEmpty else { return }
