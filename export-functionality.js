@@ -3,7 +3,7 @@
 
 // Function to export feedback data as JSON
 function exportFeedbackData() {
-    // Collect all feedback data
+    // Collect all feedback data in the format that matches your current system
     const exportData = [];
     
     // Go through all images and their feedback
@@ -13,26 +13,49 @@ function exportFeedbackData() {
         if (feedback.length > 0) {
             // Get the latest feedback for each image
             const latest = feedback[0];
+            const isApproved = latest.Approved === 'Yes';
             
             exportData.push({
-                "Image Name": img.name,
-                "Approved": latest.Approved || "No",
-                "Reviewer": latest.Reviewer || "",
-                "Comments": latest.Comments || "",
-                "Timestamp": latest.Timestamp || new Date().toISOString(),
-                "Folder": currentFolderName || ""
+                "timestamp": latest.Timestamp || new Date().toISOString(),
+                "reviewer": latest.Reviewer || "",
+                "folderName": currentFolderName || "",
+                "imageName": img.name,
+                "productCode": extractProductCode(img.name) || "",
+                "comments": latest.Comments || "",
+                "status": isApproved ? "Approved" : "Rejected",
+                "approved": latest.Approved || "No",
+                "attachments": latest.Attachments || "",
+                "productName": "", // You might want to extract this from your data
+                "imageVersion": extractVersion(img.name) || 1
             });
         } else {
             // Include images without feedback as pending
             exportData.push({
-                "Image Name": img.name,
-                "Approved": "Pending",
-                "Reviewer": "",
-                "Comments": "",
-                "Timestamp": new Date().toISOString(),
-                "Folder": currentFolderName || ""
+                "timestamp": new Date().toISOString(),
+                "reviewer": "",
+                "folderName": currentFolderName || "",
+                "imageName": img.name,
+                "productCode": extractProductCode(img.name) || "",
+                "comments": "",
+                "status": "Pending",
+                "approved": "Pending",
+                "attachments": "",
+                "productName": "",
+                "imageVersion": extractVersion(img.name) || 1
             });
         }
+    }
+    
+    // Helper function to extract product code from filename (e.g., G0001531 from G0001531_CU01-V02.jpg)
+    function extractProductCode(filename) {
+        const match = filename.match(/^([A-Z]\d+)/);
+        return match ? match[1] : null;
+    }
+    
+    // Helper function to extract version from filename (e.g., 2 from G0001531_CU01-V02.jpg)
+    function extractVersion(filename) {
+        const match = filename.match(/-V(\d+)/);
+        return match ? parseInt(match[1]) : 1;
     }
     
     // Create and download the JSON file

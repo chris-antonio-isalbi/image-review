@@ -74,25 +74,35 @@ The app expects JSON data in this format:
 ```json
 [
   {
-    "Image Name": "IMG_001.jpg",
-    "Approved": "Yes",
-    "Reviewer": "John Doe",
-    "Comments": "Approved on 2:30 PM - 15 DEC",
-    "Timestamp": "2024-12-15T14:30:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:03:23.213+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531_CU01-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
   }
 ]
 ```
 
 **Required fields:**
-- `Image Name`: The filename of the image
-- `Approved`: "Yes", "No", "Approved", "Not Approved", etc.
+- `imageName`: The filename of the image
+- `approved`: "Yes" or "No"
+- `status`: "Approved", "Rejected", etc.
 
 **Optional fields:**
-- `Reviewer`: Name of the person who reviewed
-- `Comments`: Review comments
-- `Timestamp`: When the review was completed
-- `Folder`: Source folder name
+- `timestamp`: When the review was completed
+- `reviewer`: Name of the person who reviewed
+- `comments`: Review comments
+- `folderName`: Source folder name
+- `productCode`: Product identifier
+- `productName`: Product description
+- `imageVersion`: Version number of the image
+- `attachments`: Additional attachments
 
 ## File Organization Logic
 

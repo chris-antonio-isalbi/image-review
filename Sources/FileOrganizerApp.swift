@@ -3,24 +3,34 @@ import Foundation
 
 // MARK: - Data Models
 struct ImageFeedback: Codable {
-    let filename: String
+    let imageName: String
     let approved: String // "Yes" or "No"
+    let status: String // "Approved" or other status
     let reviewer: String?
     let comments: String?
     let timestamp: String?
+    let folderName: String?
+    let productCode: String?
+    let productName: String?
+    let imageVersion: Int?
+    let attachments: String?
     
     enum CodingKeys: String, CodingKey {
-        case filename = "Image Name"
-        case approved = "Approved"
-        case reviewer = "Reviewer"
-        case comments = "Comments"
-        case timestamp = "Timestamp"
+        case imageName
+        case approved
+        case status
+        case reviewer
+        case comments
+        case timestamp
+        case folderName
+        case productCode
+        case productName
+        case imageVersion
+        case attachments
     }
 }
 
-struct ReviewData: Codable {
-    let feedback: [ImageFeedback]
-}
+
 
 // MARK: - File Organization Service
 class FileOrganizationService {
@@ -44,14 +54,10 @@ class FileOrganizationService {
         
         let feedbackData: [ImageFeedback]
         do {
-            // Try to decode as array first, then as ReviewData wrapper
-            if let directArray = try? JSONDecoder().decode([ImageFeedback].self, from: jsonData) {
-                feedbackData = directArray
-            } else {
-                let reviewData = try JSONDecoder().decode(ReviewData.self, from: jsonData)
-                feedbackData = reviewData.feedback
-            }
+            // Decode the JSON array directly
+            feedbackData = try JSONDecoder().decode([ImageFeedback].self, from: jsonData)
         } catch {
+            print("JSON parsing error: \(error)")
             throw OrganizationError.invalidJSON
         }
         
@@ -75,7 +81,7 @@ class FileOrganizationService {
                                approvedURL: approvedURL, notApprovedURL: notApprovedURL)
                 movedCount += 1
             } catch {
-                print("Error organizing file \(feedback.filename): \(error)")
+                print("Error organizing file \(feedback.imageName): \(error)")
                 errorCount += 1
             }
         }
@@ -96,12 +102,12 @@ class FileOrganizationService {
         var sourceFileURL: URL?
         
         // First try exact filename
-        let exactFileURL = sourceURL.appendingPathComponent(feedback.filename)
+        let exactFileURL = sourceURL.appendingPathComponent(feedback.imageName)
         if fileManager.fileExists(atPath: exactFileURL.path) {
             sourceFileURL = exactFileURL
         } else {
             // Try different extensions
-            let baseFilename = (feedback.filename as NSString).deletingPathExtension
+            let baseFilename = (feedback.imageName as NSString).deletingPathExtension
             for ext in possibleExtensions {
                 let testURL = sourceURL.appendingPathComponent("\(baseFilename).\(ext)")
                 if fileManager.fileExists(atPath: testURL.path) {
@@ -117,13 +123,21 @@ class FileOrganizationService {
         
         // Determine destination based on approval status
         let destinationFolder: URL
-        switch feedback.approved.lowercased() {
-        case "yes", "approved", "true":
+        
+        // Check both 'approved' and 'status' fields for flexibility
+        let isApproved = feedback.approved.lowercased() == "yes" || 
+                        feedback.status.lowercased() == "approved"
+        let isRejected = feedback.approved.lowercased() == "no" || 
+                        feedback.status.lowercased() == "rejected" ||
+                        feedback.status.lowercased() == "not approved"
+        
+        if isApproved {
             destinationFolder = approvedURL
-        case "no", "not approved", "false", "rejected":
+        } else if isRejected {
             destinationFolder = notApprovedURL
-        default:
-            // If no clear approval status, move to pending
+        } else {
+            // If no clear approval status, skip this file
+            print("Skipping \(feedback.imageName) - unclear status: approved='\(feedback.approved)', status='\(feedback.status)'")
             return
         }
         

@@ -1,42 +1,67 @@
 [
   {
-    "Image Name": "IMG_001.jpg",
-    "Approved": "Yes",
-    "Reviewer": "John Doe",
-    "Comments": "Approved on 2:30 PM - 15 DEC",
-    "Timestamp": "2024-12-15T14:30:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:03:23.213+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531_CU01-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
   },
   {
-    "Image Name": "IMG_002.png",
-    "Approved": "No",
-    "Reviewer": "Jane Smith",
-    "Comments": "Image quality too low, needs retake",
-    "Timestamp": "2024-12-15T14:35:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:03:18.464+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531_01-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
   },
   {
-    "Image Name": "IMG_003.jpg",
-    "Approved": "Yes",
-    "Reviewer": "Bob Wilson",
-    "Comments": "Perfect lighting and composition",
-    "Timestamp": "2024-12-15T14:40:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:02:45.123+00:00",
+    "reviewer": "John",
+    "folderName": "HOME",
+    "imageName": "G0001532_CU01-V01.jpg",
+    "productCode": "G0001532",
+    "comments": "Image quality too low, needs retake",
+    "status": "Rejected",
+    "approved": "No",
+    "attachments": "",
+    "productName": "Ceramic Bowl Set",
+    "imageVersion": 1
   },
   {
-    "Image Name": "IMG_004.heic",
-    "Approved": "No",
-    "Reviewer": "Alice Johnson",
-    "Comments": "Subject is blurry, please reshoot",
-    "Timestamp": "2024-12-15T14:45:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:01:30.456+00:00",
+    "reviewer": "Sarah",
+    "folderName": "HOME",
+    "imageName": "G0001533-V03.heic",
+    "productCode": "G0001533",
+    "comments": "Perfect composition and lighting",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Glass Decorative Plate",
+    "imageVersion": 3
   },
   {
-    "Image Name": "IMG_005.jpg",
-    "Approved": "Pending",
-    "Reviewer": "",
-    "Comments": "",
-    "Timestamp": "2024-12-15T14:50:00.000Z",
-    "Folder": "Product Photos"
+    "timestamp": "2025-07-22T05:00:15.789+00:00",
+    "reviewer": "Mike",
+    "folderName": "HOME",
+    "imageName": "G0001534_01-V01.png",
+    "productCode": "G0001534",
+    "comments": "Subject is blurry, please reshoot",
+    "status": "Rejected",
+    "approved": "No",
+    "attachments": "",
+    "productName": "Modern Table Lamp",
+    "imageVersion": 1
   }
 ]
