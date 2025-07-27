@@ -1,0 +1,42 @@
+[
+  {
+    "Image Name": "IMG_001.jpg",
+    "Approved": "Yes",
+    "Reviewer": "John Doe",
+    "Comments": "Approved on 2:30 PM - 15 DEC",
+    "Timestamp": "2024-12-15T14:30:00.000Z",
+    "Folder": "Product Photos"
+  },
+  {
+    "Image Name": "IMG_002.png",
+    "Approved": "No",
+    "Reviewer": "Jane Smith",
+    "Comments": "Image quality too low, needs retake",
+    "Timestamp": "2024-12-15T14:35:00.000Z",
+    "Folder": "Product Photos"
+  },
+  {
+    "Image Name": "IMG_003.jpg",
+    "Approved": "Yes",
+    "Reviewer": "Bob Wilson",
+    "Comments": "Perfect lighting and composition",
+    "Timestamp": "2024-12-15T14:40:00.000Z",
+    "Folder": "Product Photos"
+  },
+  {
+    "Image Name": "IMG_004.heic",
+    "Approved": "No",
+    "Reviewer": "Alice Johnson",
+    "Comments": "Subject is blurry, please reshoot",
+    "Timestamp": "2024-12-15T14:45:00.000Z",
+    "Folder": "Product Photos"
+  },
+  {
+    "Image Name": "IMG_005.jpg",
+    "Approved": "Pending",
+    "Reviewer": "",
+    "Comments": "",
+    "Timestamp": "2024-12-15T14:50:00.000Z",
+    "Folder": "Product Photos"
+  }
+]
