@@ -1,0 +1,28 @@
+[
+  {
+    "imageName": "test-image-1.jpg",
+    "approved": "Yes",
+    "status": "Approved",
+    "reviewer": "Test User",
+    "comments": "This is a test approved image",
+    "timestamp": "2024-12-15T10:00:00Z",
+    "folderName": "TestFolder",
+    "productCode": "TEST001",
+    "productName": "Test Product",
+    "imageVersion": 1,
+    "attachments": ""
+  },
+  {
+    "imageName": "test-image-2.jpg",
+    "approved": "No",
+    "status": "Not Approved",
+    "reviewer": "Test User",
+    "comments": "This image needs revision",
+    "timestamp": "2024-12-15T10:01:00Z",
+    "folderName": "TestFolder",
+    "productCode": "TEST002",
+    "productName": "Test Product 2",
+    "imageVersion": 1,
+    "attachments": ""
+  }
+]
