@@ -129,6 +129,15 @@ class WebAppHTTPServer: ObservableObject {
         case ("POST", "/sort-files"):
             let body = extractBody(from: request)
             return handleSortFiles(body: body)
+        case ("GET", "/folders"):
+            return handleListFolders()
+        case ("GET", let filesPath) where filesPath.hasPrefix("/folders/") && filesPath.hasSuffix("/files"):
+            let pathComponents = filesPath.components(separatedBy: "/")
+            if pathComponents.count >= 3 {
+                let folderId = pathComponents[2]
+                return handleListFiles(folderId: folderId)
+            }
+            return createErrorResponse("Invalid folder path")
         default:
             return createErrorResponse("Endpoint not found")
         }
@@ -276,6 +285,86 @@ class WebAppHTTPServer: ObservableObject {
         }
     }
     
+    private func handleListFolders() -> String {
+        print("📁 Handling list folders request...")
+        
+        // Create folder mapping based on watched directories
+        let folderMapping: [String: String] = [
+            "HW": "HOME",
+            "KW": "KITCHEN", 
+            "RG": "ROGUE",
+            "Approved": "APPROVED"
+        ]
+        
+        let folders = watchedDirectories.compactMap { directory -> [String: Any]? in
+            let folderName = URL(fileURLWithPath: directory).lastPathComponent
+            let displayName = folderMapping[folderName] ?? folderName
+            
+            return [
+                "id": folderName,
+                "name": displayName
+            ]
+        }
+        
+        let response = ["folders": folders]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: response, options: [])
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            return createJSONResponse(jsonString)
+        } catch {
+            return createErrorResponse("Failed to create folders response")
+        }
+    }
+    
+    private func handleListFiles(folderId: String) -> String {
+        print("🖼️ Handling list files request for folder: \(folderId)")
+        
+        // Find the directory for this folder ID
+        guard let directory = watchedDirectories.first(where: { 
+            URL(fileURLWithPath: $0).lastPathComponent == folderId 
+        }) else {
+            return createErrorResponse("Folder not found: \(folderId)")
+        }
+        
+        let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "heic"]
+        var files: [[String: Any]] = []
+        
+        guard let directoryContents = try? fileManager.contentsOfDirectory(atPath: directory) else {
+            return createErrorResponse("Could not read directory: \(directory)")
+        }
+        
+        for file in directoryContents {
+            let fullPath = "\(directory)/\(file)"
+            let fileExtension = URL(fileURLWithPath: file).pathExtension.lowercased()
+            
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory) && 
+               !isDirectory.boolValue && 
+               imageExtensions.contains(fileExtension) {
+                
+                // URL encode the filename to handle special characters
+                let encodedFileName = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
+                files.append([
+                    "id": file,
+                    "name": file,
+                    "url": "http://localhost:8080/images/\(folderId)/\(encodedFileName)",
+                    "webViewLink": "http://localhost:8080/images/\(folderId)/\(encodedFileName)"
+                ])
+            }
+        }
+        
+        let response = ["files": files]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: response, options: [])
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            return createJSONResponse(jsonString)
+        } catch {
+            return createErrorResponse("Failed to create files response")
+        }
+    }
+
     // MARK: - Image Serving
     private func handleImageConnection(connection: NWConnection, request: String) {
         let lines = request.components(separatedBy: "\r\n")
@@ -292,13 +381,38 @@ class WebAppHTTPServer: ObservableObject {
         
         let path = components[1]
         let filename: String
+        let folderId: String?
         
         if path.hasPrefix("/images/") {
-            filename = String(path.dropFirst("/images/".count))
-            print("🖼️ Image request for: \(filename)")
+            let imagePath = String(path.dropFirst("/images/".count))
+            let pathComponents = imagePath.components(separatedBy: "/")
+            
+            if pathComponents.count == 2 {
+                // New format: /images/folderId/filename
+                folderId = pathComponents[0]
+                filename = pathComponents[1]
+                print("🖼️ Image request for: \(filename) in folder: \(folderId ?? "unknown")")
+            } else {
+                // Old format: /images/filename
+                folderId = nil
+                filename = imagePath
+                print("🖼️ Image request for: \(filename)")
+            }
         } else if path.hasPrefix("/thumbnails/") {
-            filename = String(path.dropFirst("/thumbnails/".count))
-            print("📷 Thumbnail request for: \(filename)")
+            let thumbPath = String(path.dropFirst("/thumbnails/".count))
+            let pathComponents = thumbPath.components(separatedBy: "/")
+            
+            if pathComponents.count == 2 {
+                // New format: /thumbnails/folderId/filename
+                folderId = pathComponents[0]
+                filename = pathComponents[1]
+                print("📷 Thumbnail request for: \(filename) in folder: \(folderId ?? "unknown")")
+            } else {
+                // Old format: /thumbnails/filename
+                folderId = nil
+                filename = thumbPath
+                print("📷 Thumbnail request for: \(filename)")
+            }
         } else {
             connection.cancel()
             return
@@ -307,7 +421,16 @@ class WebAppHTTPServer: ObservableObject {
         // URL decode the filename
         let decodedFilename = filename.removingPercentEncoding ?? filename
         
-        guard let filePath = findLocalFile(named: decodedFilename) else {
+        let filePath: String?
+        if let folderId = folderId {
+            // Look for file in specific folder
+            filePath = findLocalFileInFolder(named: decodedFilename, folderId: folderId)
+        } else {
+            // Look for file in all watched directories
+            filePath = findLocalFile(named: decodedFilename)
+        }
+        
+        guard let validFilePath = filePath else {
             print("❌ Image not found: \(decodedFilename)")
             let notFoundResponse = createNotFoundResponse("Image not found: \(decodedFilename)")
             connection.send(content: notFoundResponse.data(using: .utf8), completion: .contentProcessed { _ in
@@ -316,7 +439,7 @@ class WebAppHTTPServer: ObservableObject {
             return
         }
         
-        guard let imageData = fileManager.contents(atPath: filePath) else {
+        guard let imageData = fileManager.contents(atPath: validFilePath) else {
             print("❌ Could not read image: \(decodedFilename)")
             let errorResponse = createNotFoundResponse("Could not read image: \(decodedFilename)")
             connection.send(content: errorResponse.data(using: .utf8), completion: .contentProcessed { _ in
@@ -325,7 +448,7 @@ class WebAppHTTPServer: ObservableObject {
             return
         }
         
-        let contentType = getContentType(for: filePath)
+        let contentType = getContentType(for: validFilePath)
         let headers = """
         HTTP/1.1 200 OK\r
         Content-Type: \(contentType)\r
@@ -360,6 +483,24 @@ class WebAppHTTPServer: ObservableObject {
             }
         }
         return nil
+    }
+    
+    private func findLocalFileInFolder(named filename: String, folderId: String) -> String? {
+        // Find the directory for this folder ID
+        guard let directory = watchedDirectories.first(where: { 
+            URL(fileURLWithPath: $0).lastPathComponent == folderId 
+        }) else {
+            print("❌ Folder not found: \(folderId)")
+            return nil
+        }
+        
+        let fullPath = "\(directory)/\(filename)"
+        if fileManager.fileExists(atPath: fullPath) {
+            return fullPath
+        }
+        
+        // If direct path doesn't work, try searching recursively
+        return findFileRecursively(in: directory, named: filename)
     }
     
     private func findFileRecursively(in directory: String, named filename: String) -> String? {
