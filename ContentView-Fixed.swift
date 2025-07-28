@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import AppKit
+import Swifter
 
 // MARK: - Data Models
 struct ImageFeedback: Codable {
@@ -149,36 +150,395 @@ class FolderWatcher: ObservableObject {
     }
 }
 
-// MARK: - Simple HTTP Server (without external dependencies)
-class SimpleHTTPServer: ObservableObject {
+// MARK: - HTTP Server for Web App Integration
+class HTTPServer: ObservableObject {
     @Published var isServerRunning = false
     @Published var serverStatus = "Stopped"
     
-    private var serverTask: Process?
+    private var server: HttpServer?
+    private let port: UInt16 = 8080
     private var watchedDirectories: [String] = []
+    private let fileManager = FileManager.default
     
+    // MARK: - Server Control
     func startServer() {
-        // For now, we'll show the server as "ready" but not actually start it
-        // This avoids the Swifter dependency issue
-        DispatchQueue.main.async {
-            self.isServerRunning = true
-            self.serverStatus = "Ready (HTTP integration available when Swifter is added)"
+        guard server == nil else { return }
+        
+        server = HttpServer()
+        setupRoutes()
+        
+        do {
+            try server?.start(port, forceIPv4: true)
+            DispatchQueue.main.async {
+                self.isServerRunning = true
+                self.serverStatus = "Running on localhost:\(self.port)"
+            }
+            print("✅ HTTP Server started on localhost:\(port)")
+        } catch {
+            DispatchQueue.main.async {
+                self.serverStatus = "Failed to start: \(error.localizedDescription)"
+            }
+            print("❌ Failed to start server: \(error)")
         }
     }
     
     func stopServer() {
-        serverTask?.terminate()
-        serverTask = nil
+        server?.stop()
+        server = nil
         DispatchQueue.main.async {
             self.isServerRunning = false
             self.serverStatus = "Stopped"
         }
+        print("🛑 HTTP Server stopped")
     }
     
     func addWatchDirectory(_ path: String) {
         if !watchedDirectories.contains(path) {
             watchedDirectories.append(path)
         }
+    }
+    
+    // MARK: - Route Setup
+    private func setupRoutes() {
+        // CORS preflight handling
+        server?[.OPTIONS, "/**"] = { request in
+            return HttpResponse.ok(.text("OK")).withCORSHeaders()
+        }
+        
+        // GET /status - Server status endpoint
+        server?[.GET, "/status"] = { [weak self] request in
+            return self?.handleStatus() ?? HttpResponse.internalServerError
+        }
+        
+        // POST /scan-files - File scanning endpoint
+        server?[.POST, "/scan-files"] = { [weak self] request in
+            return self?.handleScanFiles(request) ?? HttpResponse.internalServerError
+        }
+        
+        // POST /sort-files - Sort files into subdirectories
+        server?[.POST, "/sort-files"] = { [weak self] request in
+            return self?.handleSortFiles(request) ?? HttpResponse.internalServerError
+        }
+        
+        // POST /move-files - Move files to absolute paths
+        server?[.POST, "/move-files"] = { [weak self] request in
+            return self?.handleMoveFiles(request) ?? HttpResponse.internalServerError
+        }
+    }
+    
+    // MARK: - Endpoint Handlers
+    private func handleStatus() -> HttpResponse {
+        let statusData: [String: Any] = [
+            "status": "running",
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "watchedDirectories": watchedDirectories
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: statusData),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return HttpResponse.internalServerError
+        }
+        
+        return HttpResponse.ok(.text(jsonString)).withCORSHeaders()
+    }
+    
+    private func handleScanFiles(_ request: HttpRequest) -> HttpResponse {
+        // Parse incoming JSON
+        guard let bodyData = Data(request.body),
+              let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let supabaseImagesArray = json["supabaseImages"] as? [[String: Any]] else {
+            return HttpResponse.badRequest(.text("Invalid JSON format")).withCORSHeaders()
+        }
+        
+        // Convert to our ImageFeedback format
+        var supabaseImages: [ImageFeedback] = []
+        for imageData in supabaseImagesArray {
+            if let imageName = imageData["Image Name"] as? String,
+               let approved = imageData["Approved"] as? String {
+                let feedback = ImageFeedback(
+                    imageName: imageName,
+                    approved: approved,
+                    status: approved == "Yes" ? "Approved" : "Not Approved",
+                    reviewer: imageData["Reviewer"] as? String,
+                    comments: imageData["Comments"] as? String,
+                    timestamp: imageData["Timestamp"] as? String,
+                    folderName: imageData["Folder"] as? String,
+                    productCode: nil,
+                    productName: nil,
+                    imageVersion: nil,
+                    attachments: nil
+                )
+                supabaseImages.append(feedback)
+            }
+        }
+        
+        // Scan local directories
+        let localFiles = scanLocalDirectories()
+        
+        // Compare and create matches
+        let comparisonResult = compareFilesWithDatabase(localFiles: localFiles, supabaseImages: supabaseImages)
+        
+        // Format response
+        let responseData: [String: Any] = [
+            "localFiles": localFiles,
+            "supabaseImages": supabaseImages.map { $0.imageName },
+            "matches": comparisonResult.matches.map { match in
+                [
+                    "fileName": match.fileName,
+                    "localPath": match.localPath,
+                    "supabaseRecord": [
+                        "imageName": match.supabaseRecord.imageName,
+                        "approved": match.supabaseRecord.approved,
+                        "status": match.supabaseRecord.status
+                    ],
+                    "status": match.status
+                ]
+            },
+            "missing": [
+                "inLocal": comparisonResult.missingInLocal,
+                "inSupabase": comparisonResult.missingInSupabase
+            ]
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: responseData),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return HttpResponse.internalServerError
+        }
+        
+        return HttpResponse.ok(.text(jsonString)).withCORSHeaders()
+    }
+    
+    private func handleSortFiles(_ request: HttpRequest) -> HttpResponse {
+        guard let bodyData = Data(request.body),
+              let instructions = try? JSONDecoder().decode([SortInstruction].self, from: bodyData) else {
+            return HttpResponse.badRequest(.text("Invalid JSON format")).withCORSHeaders()
+        }
+        
+        var processed = 0
+        var successful = 0
+        var errors = 0
+        
+        for instruction in instructions {
+            processed += 1
+            
+            do {
+                try sortFile(instruction: instruction)
+                successful += 1
+            } catch {
+                errors += 1
+                print("Error sorting file \(instruction.fileName): \(error)")
+            }
+        }
+        
+        let response: [String: Any] = [
+            "success": errors == 0,
+            "processed": processed,
+            "successful": successful,
+            "errors": errors
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: response),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return HttpResponse.internalServerError
+        }
+        
+        return HttpResponse.ok(.text(jsonString)).withCORSHeaders()
+    }
+    
+    private func handleMoveFiles(_ request: HttpRequest) -> HttpResponse {
+        guard let bodyData = Data(request.body),
+              let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let filesArray = json["files"] as? [[String: Any]] else {
+            return HttpResponse.badRequest(.text("Invalid JSON format")).withCORSHeaders()
+        }
+        
+        var processed = 0
+        var successful = 0
+        var errors = 0
+        
+        for fileData in filesArray {
+            guard let fileName = fileData["fileName"] as? String,
+                  let fromPath = fileData["fromPath"] as? String,
+                  let toPath = fileData["toPath"] as? String else {
+                continue
+            }
+            
+            processed += 1
+            
+            do {
+                try moveFile(fileName: fileName, fromPath: fromPath, toPath: toPath)
+                successful += 1
+            } catch {
+                errors += 1
+                print("Error moving file \(fileName): \(error)")
+            }
+        }
+        
+        let response: [String: Any] = [
+            "success": errors == 0,
+            "processed": processed,
+            "successful": successful,
+            "errors": errors
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: response),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return HttpResponse.internalServerError
+        }
+        
+        return HttpResponse.ok(.text(jsonString)).withCORSHeaders()
+    }
+    
+    // MARK: - File Operations
+    private func scanLocalDirectories() -> [String] {
+        var allFiles: [String] = []
+        let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
+        
+        for directory in watchedDirectories {
+            let files = scanDirectory(path: directory, extensions: imageExtensions)
+            allFiles.append(contentsOf: files)
+        }
+        
+        return allFiles
+    }
+    
+    private func scanDirectory(path: String, extensions: [String]) -> [String] {
+        var files: [String] = []
+        
+        guard let enumerator = fileManager.enumerator(atPath: path) else {
+            return files
+        }
+        
+        while let fileName = enumerator.nextObject() as? String {
+            let fileExtension = (fileName as NSString).pathExtension.lowercased()
+            if extensions.contains(fileExtension) {
+                files.append(fileName)
+            }
+        }
+        
+        return files
+    }
+    
+    private func compareFilesWithDatabase(localFiles: [String], supabaseImages: [ImageFeedback]) -> ComparisonResult {
+        var matches: [FileMatch] = []
+        var missingInLocal: [String] = []
+        var missingInSupabase: [String] = []
+        
+        // Find matches
+        for supabaseImage in supabaseImages {
+            if let localFile = localFiles.first(where: { file in
+                let localFileName = (file as NSString).lastPathComponent
+                let baseName = (localFileName as NSString).deletingPathExtension
+                let supabaseBaseName = (supabaseImage.imageName as NSString).deletingPathExtension
+                return baseName == supabaseBaseName || localFileName == supabaseImage.imageName
+            }) {
+                let status: String
+                switch supabaseImage.approved.lowercased() {
+                case "yes": status = "approved"
+                case "no": status = "not_approved"
+                default: status = "pending"
+                }
+                
+                matches.append(FileMatch(
+                    fileName: supabaseImage.imageName,
+                    localPath: localFile,
+                    supabaseRecord: supabaseImage,
+                    status: status
+                ))
+            } else {
+                missingInLocal.append(supabaseImage.imageName)
+            }
+        }
+        
+        // Find files that exist locally but not in database
+        let matchedLocalFiles = Set(matches.map { $0.localPath })
+        missingInSupabase = localFiles.filter { !matchedLocalFiles.contains($0) }
+        
+        return ComparisonResult(
+            matches: matches,
+            missingInLocal: missingInLocal,
+            missingInSupabase: missingInSupabase
+        )
+    }
+    
+    private func sortFile(instruction: SortInstruction) throws {
+        let sourceURL = URL(fileURLWithPath: instruction.currentPath)
+        let parentDirectory = sourceURL.deletingLastPathComponent()
+        let targetDirectory = parentDirectory.appendingPathComponent(instruction.targetFolder)
+        
+        // Create target directory if it doesn't exist
+        if !fileManager.fileExists(atPath: targetDirectory.path) {
+            try fileManager.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+        }
+        
+        let destinationURL = targetDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+        
+        // Handle duplicate names
+        var finalDestination = destinationURL
+        var counter = 1
+        while fileManager.fileExists(atPath: finalDestination.path) {
+            let filename = sourceURL.deletingPathExtension().lastPathComponent
+            let ext = sourceURL.pathExtension
+            finalDestination = targetDirectory.appendingPathComponent("\(filename)_\(counter).\(ext)")
+            counter += 1
+        }
+        
+        try fileManager.moveItem(at: sourceURL, to: finalDestination)
+    }
+    
+    private func moveFile(fileName: String, fromPath: String, toPath: String) throws {
+        let sourceURL = URL(fileURLWithPath: fromPath)
+        let destinationURL = URL(fileURLWithPath: toPath)
+        
+        // Create destination directory if it doesn't exist
+        let destinationDirectory = destinationURL.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: destinationDirectory.path) {
+            try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        }
+        
+        // Handle duplicate names
+        var finalDestination = destinationURL
+        var counter = 1
+        while fileManager.fileExists(atPath: finalDestination.path) {
+            let filename = destinationURL.deletingPathExtension().lastPathComponent
+            let ext = destinationURL.pathExtension
+            finalDestination = destinationDirectory.appendingPathComponent("\(filename)_\(counter).\(ext)")
+            counter += 1
+        }
+        
+        try fileManager.moveItem(at: sourceURL, to: finalDestination)
+    }
+}
+
+// MARK: - Data Models for HTTP API
+struct SortInstruction: Codable {
+    let fileName: String
+    let currentPath: String
+    let targetFolder: String
+}
+
+struct FileMatch {
+    let fileName: String
+    let localPath: String
+    let supabaseRecord: ImageFeedback
+    let status: String
+}
+
+struct ComparisonResult {
+    let matches: [FileMatch]
+    let missingInLocal: [String]
+    let missingInSupabase: [String]
+}
+
+// MARK: - HTTP Response Extensions
+extension HttpResponse {
+    func withCORSHeaders() -> HttpResponse {
+        var response = self
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Content-Type"] = "application/json"
+        return response
     }
 }
 
@@ -349,7 +709,7 @@ class FileOrganizationService: ObservableObject {
 struct ContentView: View {
     @StateObject private var organizationService = FileOrganizationService()
     @StateObject private var folderWatcher = FolderWatcher()
-    @StateObject private var httpServer = SimpleHTTPServer()
+    @StateObject private var httpServer = HTTPServer()
     @State private var jsonFilePath = ""
     @State private var imageFolderPath = ""
     @State private var showingProcessConfirmation = false
@@ -364,43 +724,54 @@ struct ContentView: View {
                 .padding(.top)
             
             // HTTP Server Section
-            GroupBox("🌐 Web App Integration (Setup Required)") {
+            GroupBox("🌐 Web App Integration") {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("HTTP Server Status:")
                                 .font(.headline)
-                            Text("To enable web app integration, add Swifter package to Xcode")
+                            Text(httpServer.serverStatus)
                                 .font(.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(httpServer.isServerRunning ? .green : .secondary)
                         }
                         
                         Spacer()
                         
-                        Button("Add Swifter Package") {
-                            // This will show instructions
-                            showSwifterInstructions()
+                        if httpServer.isServerRunning {
+                            Button("Stop Server") {
+                                httpServer.stopServer()
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button("Start Server") {
+                                httpServer.startServer()
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                     
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Instructions:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        Text("1. File → Add Package Dependencies")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Text("2. Add: https://github.com/httpswift/swifter.git")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Text("3. Replace SimpleHTTPServer with HTTPServer")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                    if httpServer.isServerRunning {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Available endpoints:")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                            Text("• GET http://localhost:8080/status")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/scan-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/sort-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/move-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(8)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
                     }
-                    .padding(8)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(6)
                 }
             }
             .padding(.horizontal)
@@ -634,24 +1005,7 @@ struct ContentView: View {
         folderWatcher.removePendingJob(job)
     }
     
-    private func showSwifterInstructions() {
-        let alert = NSAlert()
-        alert.messageText = "Add Swifter Package for Web Integration"
-        alert.informativeText = """
-        To enable web app integration:
-        
-        1. File → Add Package Dependencies...
-        2. Paste: https://github.com/httpswift/swifter.git
-        3. Click "Add Package"
-        4. Select "Swifter" and click "Add Package"
-        5. Replace 'SimpleHTTPServer' with 'HTTPServer' in the code
-        6. Add 'import Swifter' at the top
-        
-        The watch folder feature works without this step!
-        """
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+
 }
 
 // MARK: - Preview
