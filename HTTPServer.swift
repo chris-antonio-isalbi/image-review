@@ -73,23 +73,20 @@ class WebAppHTTPServer: ObservableObject {
                 let request = String(data: data, encoding: .utf8) ?? ""
                 print("📨 Received request: \(request.prefix(200))...")
                 
-                let response: String
-                
-                // Check if this is an image request (binary response needed)
+                // Check if this is an image request (needs binary response)
                 if request.contains("GET /images/") || request.contains("GET /thumbnails/") {
-                    response = self?.processRequest(request) ?? self?.createErrorResponse("Server error") ?? "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+                    self?.handleImageConnection(connection: connection, request: request)
                 } else {
-                    response = self?.processRequest(request) ?? self?.createErrorResponse("Server error") ?? "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+                    let response = self?.processRequest(request) ?? self?.createErrorResponse("Server error") ?? "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+                    let responseData = response.data(using: .utf8) ?? Data()
+                    
+                    connection.send(content: responseData, completion: .contentProcessed { error in
+                        if let error = error {
+                            print("❌ Send error: \(error)")
+                        }
+                        connection.cancel()
+                    })
                 }
-                
-                let responseData = response.data(using: .utf8) ?? Data()
-                
-                connection.send(content: responseData, completion: .contentProcessed { error in
-                    if let error = error {
-                        print("❌ Send error: \(error)")
-                    }
-                    connection.cancel()
-                })
             }
             
             if isComplete {
@@ -132,12 +129,6 @@ class WebAppHTTPServer: ObservableObject {
         case ("POST", "/sort-files"):
             let body = extractBody(from: request)
             return handleSortFiles(body: body)
-        case ("GET", let imagePath) where imagePath.hasPrefix("/images/"):
-            let filename = String(imagePath.dropFirst("/images/".count))
-            return handleImageRequest(filename: filename)
-        case ("GET", let thumbnailPath) where thumbnailPath.hasPrefix("/thumbnails/"):
-            let filename = String(thumbnailPath.dropFirst("/thumbnails/".count))
-            return handleThumbnailRequest(filename: filename)
         default:
             return createErrorResponse("Endpoint not found")
         }
@@ -286,26 +277,79 @@ class WebAppHTTPServer: ObservableObject {
     }
     
     // MARK: - Image Serving
-    private func handleImageRequest(filename: String) -> String {
-        print("🖼️ Handling image request for: \(filename)")
+    private func handleImageConnection(connection: NWConnection, request: String) {
+        let lines = request.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else {
+            connection.cancel()
+            return
+        }
         
-        guard let filePath = findLocalFile(named: filename) else {
-            return createNotFoundResponse("Image not found: \(filename)")
+        let components = requestLine.components(separatedBy: " ")
+        guard components.count >= 2 else {
+            connection.cancel()
+            return
+        }
+        
+        let path = components[1]
+        let filename: String
+        
+        if path.hasPrefix("/images/") {
+            filename = String(path.dropFirst("/images/".count))
+            print("🖼️ Image request for: \(filename)")
+        } else if path.hasPrefix("/thumbnails/") {
+            filename = String(path.dropFirst("/thumbnails/".count))
+            print("📷 Thumbnail request for: \(filename)")
+        } else {
+            connection.cancel()
+            return
+        }
+        
+        // URL decode the filename
+        let decodedFilename = filename.removingPercentEncoding ?? filename
+        
+        guard let filePath = findLocalFile(named: decodedFilename) else {
+            print("❌ Image not found: \(decodedFilename)")
+            let notFoundResponse = createNotFoundResponse("Image not found: \(decodedFilename)")
+            connection.send(content: notFoundResponse.data(using: .utf8), completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+            return
         }
         
         guard let imageData = fileManager.contents(atPath: filePath) else {
-            return createNotFoundResponse("Could not read image: \(filename)")
+            print("❌ Could not read image: \(decodedFilename)")
+            let errorResponse = createNotFoundResponse("Could not read image: \(decodedFilename)")
+            connection.send(content: errorResponse.data(using: .utf8), completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+            return
         }
         
         let contentType = getContentType(for: filePath)
-        return createImageResponse(imageData, contentType: contentType)
-    }
-    
-    private func handleThumbnailRequest(filename: String) -> String {
-        print("🖼️ Handling thumbnail request for: \(filename)")
+        let headers = """
+        HTTP/1.1 200 OK\r
+        Content-Type: \(contentType)\r
+        Content-Length: \(imageData.count)\r
+        Access-Control-Allow-Origin: *\r
+        Access-Control-Allow-Methods: GET, POST, OPTIONS\r
+        Access-Control-Allow-Headers: Content-Type\r
+        Cache-Control: public, max-age=3600\r
+        \r
+
+        """
         
-        // For now, serve the full image (thumbnail generation can be added later)
-        return handleImageRequest(filename: filename)
+        // Send headers first, then binary image data
+        let headerData = headers.data(using: .utf8) ?? Data()
+        let fullResponse = headerData + imageData
+        
+        connection.send(content: fullResponse, completion: .contentProcessed { error in
+            if let error = error {
+                print("❌ Error sending image: \(error)")
+            } else {
+                print("✅ Successfully sent image: \(decodedFilename) (\(imageData.count) bytes)")
+            }
+            connection.cancel()
+        })
     }
     
     private func findLocalFile(named filename: String) -> String? {
@@ -345,22 +389,7 @@ class WebAppHTTPServer: ObservableObject {
         }
     }
     
-    private func createImageResponse(_ imageData: Data, contentType: String) -> String {
-        let headers = [
-            "HTTP/1.1 200 OK",
-            "Content-Type: \(contentType)",
-            "Content-Length: \(imageData.count)",
-            "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type",
-            "",
-            ""
-        ].joined(separator: "\r\n")
-        
-        // Convert image data to base64 and embed in response
-        let base64Image = imageData.base64EncodedString()
-        return headers + base64Image
-    }
+
     
     private func createNotFoundResponse(_ message: String) -> String {
         let response = ["error": message, "success": false] as [String: Any]
