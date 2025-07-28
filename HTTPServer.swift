@@ -24,18 +24,44 @@ class WebAppHTTPServer: ObservableObject {
             
             listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
             
+            // Set state update handler before starting
+            listener?.stateUpdateHandler = { [weak self] state in
+                DispatchQueue.main.async {
+                    switch state {
+                    case .ready:
+                        self?.isServerRunning = true
+                        self?.serverStatus = "Running on localhost:\(self?.port ?? 8080)"
+                        print("✅ HTTP Server started on localhost:\(self?.port ?? 8080)")
+                        print("🌐 Also accessible at: http://YOUR_IP_ADDRESS:\(self?.port ?? 8080)")
+                    case .failed(let error):
+                        self?.isServerRunning = false
+                        self?.serverStatus = "Failed to start: \(error.localizedDescription)"
+                        print("❌ Failed to start server: \(error)")
+                    case .cancelled:
+                        self?.isServerRunning = false
+                        self?.serverStatus = "Stopped"
+                    default:
+                        break
+                    }
+                }
+            }
+            
             listener?.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
             
             listener?.start(queue: DispatchQueue.global())
             
-            DispatchQueue.main.async {
-                self.isServerRunning = true
-                self.serverStatus = "Running on localhost:\(self.port)"
-            }
-            
+            // Get local IP address for network access
+            let localIP = getLocalIPAddress()
             print("✅ Server started on port \(port)")
+            print("📱 Local access: http://localhost:\(port)")
+            if let ip = localIP {
+                print("🌐 Network access: http://\(ip):\(port)")
+                DispatchQueue.main.async {
+                    self.serverStatus = "Running on localhost:\(self.port) and \(ip):\(self.port)"
+                }
+            }
             
         } catch {
             print("❌ Failed to start server: \(error)")
@@ -595,6 +621,42 @@ class WebAppHTTPServer: ObservableObject {
         try fileManager.moveItem(at: sourceURL, to: targetURL)
     }
     
+    // MARK: - Network Helpers
+    private func getLocalIPAddress() -> String? {
+        var address: String?
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        
+        if getifaddrs(&ifaddr) == 0 {
+            var ptr = ifaddr
+            while ptr != nil {
+                defer { ptr = ptr?.pointee.ifa_next }
+                
+                let interface = ptr?.pointee
+                let addrFamily = interface?.ifa_addr.pointee.sa_family
+                
+                if addrFamily == UInt8(AF_INET) || addrFamily == UInt8(AF_INET6) {
+                    let name = String(cString: (interface?.ifa_name)!)
+                    
+                    if name == "en0" || name == "en1" || name.hasPrefix("wlan") {
+                        var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                        getnameinfo(interface?.ifa_addr, socklen_t((interface?.ifa_addr.pointee.sa_len)!),
+                                   &hostname, socklen_t(hostname.count),
+                                   nil, socklen_t(0), NI_NUMERICHOST)
+                        address = String(cString: hostname)
+                        
+                        // Prefer IPv4 addresses
+                        if addrFamily == UInt8(AF_INET) {
+                            break
+                        }
+                    }
+                }
+            }
+            freeifaddrs(ifaddr)
+        }
+        
+        return address
+    }
+
     // MARK: - HTTP Response Helpers
     private func createJSONResponse(_ json: String) -> String {
         return [
