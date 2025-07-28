@@ -450,7 +450,7 @@ class WebAppHTTPServer: ObservableObject {
     }
     
     private func createErrorResponse(_ message: String = "Internal Server Error") -> String {
-        let errorResponse = ["error": message, "success": false]
+        let errorResponse: [String: Any] = ["error": message, "success": false]
         
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: errorResponse, options: [])
