@@ -1,7 +1,6 @@
 import SwiftUI
 import Foundation
 import AppKit
-import Swifter
 
 // MARK: - Data Models
 struct ImageFeedback: Codable {
@@ -147,6 +146,39 @@ class FolderWatcher: ObservableObject {
     
     func removePendingJob(_ job: PendingJob) {
         pendingProcessing.removeAll { $0.id == job.id }
+    }
+}
+
+// MARK: - Simple HTTP Server (without external dependencies)
+class SimpleHTTPServer: ObservableObject {
+    @Published var isServerRunning = false
+    @Published var serverStatus = "Stopped"
+    
+    private var serverTask: Process?
+    private var watchedDirectories: [String] = []
+    
+    func startServer() {
+        // For now, we'll show the server as "ready" but not actually start it
+        // This avoids the Swifter dependency issue
+        DispatchQueue.main.async {
+            self.isServerRunning = true
+            self.serverStatus = "Ready (HTTP integration available when Swifter is added)"
+        }
+    }
+    
+    func stopServer() {
+        serverTask?.terminate()
+        serverTask = nil
+        DispatchQueue.main.async {
+            self.isServerRunning = false
+            self.serverStatus = "Stopped"
+        }
+    }
+    
+    func addWatchDirectory(_ path: String) {
+        if !watchedDirectories.contains(path) {
+            watchedDirectories.append(path)
+        }
     }
 }
 
@@ -317,7 +349,7 @@ class FileOrganizationService: ObservableObject {
 struct ContentView: View {
     @StateObject private var organizationService = FileOrganizationService()
     @StateObject private var folderWatcher = FolderWatcher()
-    @StateObject private var httpServer = HTTPServer()
+    @StateObject private var httpServer = SimpleHTTPServer()
     @State private var jsonFilePath = ""
     @State private var imageFolderPath = ""
     @State private var showingProcessConfirmation = false
@@ -332,54 +364,43 @@ struct ContentView: View {
                 .padding(.top)
             
             // HTTP Server Section
-            GroupBox("🌐 Web App Integration") {
+            GroupBox("🌐 Web App Integration (Setup Required)") {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("HTTP Server Status:")
                                 .font(.headline)
-                            Text(httpServer.serverStatus)
+                            Text("To enable web app integration, add Swifter package to Xcode")
                                 .font(.caption)
-                                .foregroundColor(httpServer.isServerRunning ? .green : .secondary)
+                                .foregroundColor(.orange)
                         }
                         
                         Spacer()
                         
-                        if httpServer.isServerRunning {
-                            Button("Stop Server") {
-                                httpServer.stopServer()
-                            }
-                            .buttonStyle(.bordered)
-                        } else {
-                            Button("Start Server") {
-                                httpServer.startServer()
-                            }
-                            .buttonStyle(.borderedProminent)
+                        Button("Add Swifter Package") {
+                            // This will show instructions
+                            showSwifterInstructions()
                         }
+                        .buttonStyle(.borderedProminent)
                     }
                     
-                    if httpServer.isServerRunning {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Available endpoints:")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                            Text("• GET http://localhost:8080/status")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Text("• POST http://localhost:8080/scan-files")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Text("• POST http://localhost:8080/sort-files")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Text("• POST http://localhost:8080/move-files")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(8)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(6)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Instructions:")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text("1. File → Add Package Dependencies")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("2. Add: https://github.com/httpswift/swifter.git")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("3. Replace SimpleHTTPServer with HTTPServer")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
+                    .padding(8)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(6)
                 }
             }
             .padding(.horizontal)
@@ -566,7 +587,6 @@ struct ContentView: View {
         if panel.runModal() == .OK {
             if let url = panel.url {
                 folderWatcher.watchedFolder = url.path
-                // Also add to HTTP server's watched directories
                 httpServer.addWatchDirectory(url.path)
             }
         }
@@ -599,7 +619,6 @@ struct ContentView: View {
         if panel.runModal() == .OK {
             if let url = panel.url {
                 imageFolderPath = url.path
-                // Add this folder to HTTP server's watched directories
                 httpServer.addWatchDirectory(url.path)
             }
         }
@@ -607,13 +626,31 @@ struct ContentView: View {
     
     private func processJob(_ job: FolderWatcher.PendingJob) {
         if imageFolderPath.isEmpty {
-            // If no image folder is set, ask user to select one
             selectImageFolder()
             guard !imageFolderPath.isEmpty else { return }
         }
         
         organizationService.organizeFiles(jsonPath: job.jsonPath, sourceFolderPath: imageFolderPath)
         folderWatcher.removePendingJob(job)
+    }
+    
+    private func showSwifterInstructions() {
+        let alert = NSAlert()
+        alert.messageText = "Add Swifter Package for Web Integration"
+        alert.informativeText = """
+        To enable web app integration:
+        
+        1. File → Add Package Dependencies...
+        2. Paste: https://github.com/httpswift/swifter.git
+        3. Click "Add Package"
+        4. Select "Swifter" and click "Add Package"
+        5. Replace 'SimpleHTTPServer' with 'HTTPServer' in the code
+        6. Add 'import Swifter' at the top
+        
+        The watch folder feature works without this step!
+        """
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
