@@ -316,6 +316,7 @@ class FileOrganizationService: ObservableObject {
 struct ContentView: View {
     @StateObject private var organizationService = FileOrganizationService()
     @StateObject private var folderWatcher = FolderWatcher()
+    @StateObject private var httpServer = HTTPServer()
     @State private var jsonFilePath = ""
     @State private var imageFolderPath = ""
     @State private var showingProcessConfirmation = false
@@ -328,6 +329,59 @@ struct ContentView: View {
                 .font(.title)
                 .fontWeight(.bold)
                 .padding(.top)
+            
+            // HTTP Server Section
+            GroupBox("🌐 Web App Integration") {
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("HTTP Server Status:")
+                                .font(.headline)
+                            Text(httpServer.serverStatus)
+                                .font(.caption)
+                                .foregroundColor(httpServer.isServerRunning ? .green : .secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        if httpServer.isServerRunning {
+                            Button("Stop Server") {
+                                httpServer.stopServer()
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button("Start Server") {
+                                httpServer.startServer()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    
+                    if httpServer.isServerRunning {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Available endpoints:")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                            Text("• GET http://localhost:8080/status")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/scan-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/sort-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• POST http://localhost:8080/move-files")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(8)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            .padding(.horizontal)
             
             // Watch Folder Section
             GroupBox("🔍 Auto-Watch Folder") {
@@ -511,6 +565,8 @@ struct ContentView: View {
         if panel.runModal() == .OK {
             if let url = panel.url {
                 folderWatcher.watchedFolder = url.path
+                // Also add to HTTP server's watched directories
+                httpServer.addWatchDirectory(url.path)
             }
         }
     }
@@ -542,6 +598,8 @@ struct ContentView: View {
         if panel.runModal() == .OK {
             if let url = panel.url {
                 imageFolderPath = url.path
+                // Add this folder to HTTP server's watched directories
+                httpServer.addWatchDirectory(url.path)
             }
         }
     }
