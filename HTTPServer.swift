@@ -248,7 +248,7 @@ class WebAppHTTPServer: ObservableObject {
         Content-Type: text/html\r
         Access-Control-Allow-Origin: *\r
         Access-Control-Allow-Methods: GET, POST, OPTIONS\r
-        Access-Control-Allow-Headers: Content-Type\r
+        Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning\r
         Content-Length: \(welcomeHTML.utf8.count)\r
         \r
         \(welcomeHTML)
@@ -562,7 +562,7 @@ class WebAppHTTPServer: ObservableObject {
         Content-Length: \(imageData.count)\r
         Access-Control-Allow-Origin: *\r
         Access-Control-Allow-Methods: GET, POST, OPTIONS\r
-        Access-Control-Allow-Headers: Content-Type\r
+        Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning\r
         Cache-Control: public, max-age=3600\r
         \r
 
@@ -650,7 +650,7 @@ class WebAppHTTPServer: ObservableObject {
                 "Content-Type: application/json",
                 "Access-Control-Allow-Origin: *",
                 "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers: Content-Type",
+                "Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning",
                 "",
                 jsonString
             ].joined(separator: "\r\n")
@@ -745,7 +745,7 @@ class WebAppHTTPServer: ObservableObject {
             "Content-Type: application/json",
             "Access-Control-Allow-Origin: *",
             "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type",
+            "Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning",
             "",
             json
         ].joined(separator: "\r\n")
@@ -756,7 +756,7 @@ class WebAppHTTPServer: ObservableObject {
             "HTTP/1.1 200 OK",
             "Access-Control-Allow-Origin: *",
             "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers: Content-Type",
+            "Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning",
             "",
             ""
         ].joined(separator: "\r\n")
@@ -774,7 +774,7 @@ class WebAppHTTPServer: ObservableObject {
                 "Content-Type: application/json",
                 "Access-Control-Allow-Origin: *",
                 "Access-Control-Allow-Methods: GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers: Content-Type",
+                "Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning",
                 "",
                 jsonString
             ].joined(separator: "\r\n")
