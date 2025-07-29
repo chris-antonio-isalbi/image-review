@@ -147,6 +147,8 @@ class WebAppHTTPServer: ObservableObject {
         
         // Route the request
         switch (method, path) {
+        case ("GET", "/"):
+            return handleRoot()
         case ("GET", "/status"):
             return handleStatus()
         case ("POST", "/scan-files"):
@@ -174,6 +176,85 @@ class WebAppHTTPServer: ObservableObject {
         return components.count > 1 ? components[1] : ""
     }
     
+    private func handleRoot() -> String {
+        let welcomeHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Image Review Swift Server</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #333; text-align: center; }
+                .endpoint { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #007bff; }
+                .endpoint-title { font-weight: bold; color: #007bff; }
+                .endpoint-desc { color: #666; font-size: 14px; margin-top: 5px; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+                .status { text-align: center; color: #28a745; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚀 Image Review Swift Server</h1>
+                <div class="status">✅ Server Running Successfully</div>
+                
+                <h2>📡 Available Endpoints:</h2>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">GET <a href="/status">/status</a></div>
+                    <div class="endpoint-desc">Server status and configuration</div>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">GET <a href="/folders">/folders</a></div>
+                    <div class="endpoint-desc">List all available image folders</div>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">GET /folders/:folderId/files</div>
+                    <div class="endpoint-desc">List files in a specific folder</div>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">POST /scan-files</div>
+                    <div class="endpoint-desc">Scan and compare local files with web app data</div>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">POST /sort-files</div>
+                    <div class="endpoint-desc">Organize files into Approved/Not Approved folders</div>
+                </div>
+                
+                <div class="endpoint">
+                    <div class="endpoint-title">GET /images/:filename</div>
+                    <div class="endpoint-desc">Serve image files directly</div>
+                </div>
+                
+                <h2>📊 Server Info:</h2>
+                <p><strong>Watched Directories:</strong> \(watchedDirectories.count) configured</p>
+                <p><strong>Timestamp:</strong> \(ISO8601DateFormatter().string(from: Date()))</p>
+                
+                <p style="text-align: center; margin-top: 30px; color: #666;">
+                    🌐 Accessible via ngrok for remote connections
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return """
+        HTTP/1.1 200 OK\r
+        Content-Type: text/html\r
+        Access-Control-Allow-Origin: *\r
+        Access-Control-Allow-Methods: GET, POST, OPTIONS\r
+        Access-Control-Allow-Headers: Content-Type\r
+        Content-Length: \(welcomeHTML.utf8.count)\r
+        \r
+        \(welcomeHTML)
+        """
+    }
+
     private func handleStatus() -> String {
         let status = [
             "status": "running",
