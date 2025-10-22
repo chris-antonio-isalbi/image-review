@@ -1,0 +1,41 @@
+[
+  {
+    "timestamp": "2025-07-22T05:03:23.213+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531_CU01-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
+  },
+  {
+    "timestamp": "2025-07-22T05:03:18.464+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531_01-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
+  },
+  {
+    "timestamp": "2025-07-22T05:03:15.066+00:00",
+    "reviewer": "Mimi",
+    "folderName": "HOME",
+    "imageName": "G0001531-V02.jpg",
+    "productCode": "G0001531",
+    "comments": "Approved on 03:03 PM - JUL 22",
+    "status": "Approved",
+    "approved": "Yes",
+    "attachments": "",
+    "productName": "Sweetheart Vase M",
+    "imageVersion": 2
+  }
+]
